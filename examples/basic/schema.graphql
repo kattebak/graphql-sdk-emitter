@@ -1,0 +1,64 @@
+"""
+A counterparty in our system.
+"""
+type Counterparty {
+	id: ID!
+	"""
+	Display name shown in UIs.
+	"""
+	name: String!
+	createdAt: String!
+}
+
+type CounterpartyEdge {
+	cursor: String
+	node: Counterparty!
+}
+
+type PageInfo {
+	endCursor: String
+	hasNextPage: Boolean!
+}
+
+type CounterpartyConnection {
+	edges: [CounterpartyEdge!]!
+	pageInfo: PageInfo!
+}
+
+"""
+Filter input for counterparty search.
+"""
+input CounterpartyFilter {
+	name: StringFilter
+	and: [CounterpartyFilter!]
+	or: [CounterpartyFilter!]
+}
+
+input StringFilter {
+	eq: String
+	contains: String
+}
+
+type Query {
+	"""
+	Search counterparties by free-text query and optional structured filter.
+	"""
+	searchCounterparty(
+		query: String
+		filter: CounterpartyFilter
+		first: Int
+		after: String
+	): CounterpartyConnection!
+
+	"""
+	Look up a counterparty by id.
+	"""
+	counterparty(id: ID!): Counterparty
+}
+
+type Mutation {
+	"""
+	Create a new counterparty.
+	"""
+	createCounterparty(name: String!): Counterparty!
+}

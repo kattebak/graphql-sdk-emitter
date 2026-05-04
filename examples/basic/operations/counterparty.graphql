@@ -1,0 +1,42 @@
+query SearchCounterparty(
+	$query: String
+	$filter: CounterpartyFilter
+	$first: Int
+	$after: String
+) {
+	searchCounterparty(
+		query: $query
+		filter: $filter
+		first: $first
+		after: $after
+	) {
+		edges {
+			cursor
+			node {
+				id
+				name
+				createdAt
+			}
+		}
+		pageInfo {
+			endCursor
+			hasNextPage
+		}
+	}
+}
+
+query GetCounterparty($id: ID!) {
+	counterparty(id: $id) {
+		id
+		name
+		createdAt
+	}
+}
+
+mutation CreateCounterparty($name: String!) {
+	createCounterparty(name: $name) {
+		id
+		name
+		createdAt
+	}
+}
