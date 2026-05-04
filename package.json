@@ -1,21 +1,19 @@
 {
-	"name": "@kattebak/typespec-graphql-sdk-emitter",
+	"name": "@kattebak/graphql-sdk-emitter",
 	"version": "0.0.0",
-	"description": "TypeSpec emitter that generates a typed GraphQL SDK from a TypeSpec source",
+	"description": "Generate a typed TypeScript SDK from a GraphQL SDL with pluggable auth (SigV4, Cognito bearer, API key)",
 	"type": "module",
 	"main": "dist/index.js",
 	"publishConfig": {
 		"access": "public"
 	},
 	"files": [
-		"dist",
-		"tsp"
+		"dist"
 	],
 	"exports": {
 		".": {
 			"types": "./dist/index.d.ts",
-			"default": "./dist/index.js",
-			"typespec": "./tsp/main.tsp"
+			"default": "./dist/index.js"
 		}
 	},
 	"scripts": {
@@ -26,9 +24,6 @@
 		"test": "npm run build && npm run lint && npm run test:unit",
 		"test:unit": "node --test --import=tsx src/**/*.test.ts",
 		"prepublishOnly": "tsc"
-	},
-	"dependencies": {
-		"@typespec/compiler": "^1.4.0"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.3.7",
