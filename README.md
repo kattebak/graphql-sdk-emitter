@@ -53,7 +53,7 @@ const auth = new ApiKeyAuth({ apiKey: process.env.API_KEY! });
 const client = new GraphQLClient(url, { fetch: auth.wrap(fetch) });
 const sdk = getSdk(client);
 
-const r = await sdk.SearchCounterparty({ query: "evolve", first: 20 });
+const r = await sdk.SearchBooks({ query: "tolkien", first: 20 });
 ```
 
 ## Programmatic codegen
@@ -143,10 +143,10 @@ Two helpers walk Relay-style cursored connections. Pick by what you need per pag
 ```typescript
 import { paginatePages } from "@kattebak/graphql-sdk-emitter";
 
-for await (const page of paginatePages(sdk.SearchCounterparty, { query: "evolve" }, { pageSize: 50 })) {
-	console.log(page.searchCounterparty.totalCount);
-	for (const edge of page.searchCounterparty.edges) {
-		console.log(edge.node.counterpartyId);
+for await (const page of paginatePages(sdk.SearchBooks, { query: "tolkien" }, { pageSize: 50 })) {
+	console.log(page.searchBooks.totalCount);
+	for (const edge of page.searchBooks.edges) {
+		console.log(edge.node.bookId, edge.node.title);
 	}
 }
 ```
@@ -156,16 +156,16 @@ for await (const page of paginatePages(sdk.SearchCounterparty, { query: "evolve"
 ```typescript
 import { paginate, collect } from "@kattebak/graphql-sdk-emitter";
 
-type Counterparty = { counterpartyId: string; name: string };
+type Book = { bookId: string; title: string };
 
-for await (const nodes of paginate<{ query: string }, unknown, Counterparty>(
-	sdk.SearchCounterparty,
-	{ query: "evolve" },
+for await (const nodes of paginate<{ query: string }, unknown, Book>(
+	sdk.SearchBooks,
+	{ query: "tolkien" },
 )) {
-	for (const node of nodes) console.log(node.counterpartyId);
+	for (const node of nodes) console.log(node.title);
 }
 
-const all = await collect<{ query: string }, unknown, Counterparty>(sdk.SearchCounterparty, { query: "evolve" });
+const all = await collect<{ query: string }, unknown, Book>(sdk.SearchBooks, { query: "tolkien" });
 ```
 
 All three auto-detect the connection inside the response (first object with a `pageInfo` field). For deeply nested or ambiguous responses pass `connectionPath: ["data", "wrapper", "results"]`. They stop when `hasNextPage` is false, when `endCursor` does not advance, or when `maxPages` is reached.
@@ -180,14 +180,14 @@ The emitter writes a `manifest.json` next to your generated code:
 	"generatedAt": "2026-01-01T00:00:00.000Z",
 	"operations": [
 		{
-			"name": "searchCounterparty",
+			"name": "searchBooks",
 			"kind": "query",
-			"description": "Search counterparties by free-text query.",
+			"description": "Search the catalogue by free-text query.",
 			"parameters": [
 				{ "name": "query", "type": "String", "required": false },
-				{ "name": "filter", "type": "CounterpartyFilter", "required": false, "description": "Structured filter." }
+				{ "name": "filter", "type": "BookFilter", "required": false, "description": "Structured filter." }
 			],
-			"returns": "CounterpartyConnection!"
+			"returns": "BookConnection!"
 		}
 	]
 }
@@ -200,12 +200,12 @@ Descriptions come from SDL `"""..."""` doc comments. Use this as an LLM-friendly
 For input types whose name matches `Filter`, `Where`, or `Condition` (or that contain `and`/`or`/`not` combinators), the emitter writes a typed identity helper in `filters.ts`:
 
 ```typescript
-import { buildCounterpartyFilter } from "./generated/filters";
+import { buildBookFilter } from "./generated/filters";
 
-const filter = buildCounterpartyFilter({
+const filter = buildBookFilter({
 	or: [
-		{ name: { contains: "evolve" } },
-		{ name: { contains: "stx" } },
+		{ title: { contains: "tolkien" } },
+		{ author: { contains: "le guin" } },
 	],
 });
 ```
@@ -219,10 +219,10 @@ This package is framework-agnostic. To pair with `@tanstack/react-query`, write 
 ```typescript
 import { useQuery } from "@tanstack/react-query";
 
-export function useSearchCounterparty(args: SearchCounterpartyQueryVariables) {
+export function useSearchBooks(args: SearchBooksQueryVariables) {
 	return useQuery({
-		queryKey: ["searchCounterparty", args],
-		queryFn: () => sdk.SearchCounterparty(args),
+		queryKey: ["searchBooks", args],
+		queryFn: () => sdk.SearchBooks(args),
 	});
 }
 ```
