@@ -37,4 +37,5 @@ export {
 	type PageInfo,
 	type PaginateOptions,
 	paginate,
+	paginatePages,
 } from "./runtime/index.js";
