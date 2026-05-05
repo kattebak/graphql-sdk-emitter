@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { collect, paginate } from "./paginate.js";
+import { collect, paginate, paginatePages } from "./paginate.js";
 
 interface Node {
 	id: string;
@@ -159,5 +159,63 @@ describe("paginate", () => {
 			all.map((n) => n.id),
 			["deep"],
 		);
+	});
+});
+
+describe("paginatePages", () => {
+	it("yields the full result per page and walks until exhausted", async () => {
+		const pages = [
+			{
+				things: {
+					edges: [{ node: { id: "1" } }, { node: { id: "2" } }],
+					totalCount: 4,
+					pageInfo: { endCursor: "c1", hasNextPage: true },
+				},
+			},
+			{
+				things: {
+					edges: [{ node: { id: "3" } }, { node: { id: "4" } }],
+					totalCount: 4,
+					pageInfo: { endCursor: "c2", hasNextPage: false },
+				},
+			},
+		];
+		let i = 0;
+		const op = async (_args: {
+			after?: string | null;
+			first?: number | null;
+		}) => {
+			const r = pages[i];
+			assert.ok(r);
+			i += 1;
+			return r;
+		};
+		const collected: number[] = [];
+		for await (const page of paginatePages(op, {})) {
+			collected.push(page.things.edges.length);
+		}
+		assert.deepEqual(collected, [2, 2]);
+		assert.equal(i, 2);
+	});
+
+	it("respects maxPages", async () => {
+		let i = 0;
+		const op = async (_args: {
+			after?: string | null;
+			first?: number | null;
+		}) => {
+			i += 1;
+			return {
+				things: {
+					edges: [{ node: { id: String(i) } }],
+					pageInfo: { endCursor: `c${i}`, hasNextPage: true },
+				},
+			};
+		};
+		const seen: string[] = [];
+		for await (const page of paginatePages(op, {}, { maxPages: 2 })) {
+			seen.push(page.things.edges[0]?.node.id ?? "");
+		}
+		assert.deepEqual(seen, ["1", "2"]);
 	});
 });

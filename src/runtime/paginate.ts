@@ -104,3 +104,48 @@ export async function collect<TArgs, TResult, TNode = unknown>(
 	}
 	return all;
 }
+
+/**
+ * Walks cursored pages and yields the full operation result per page.
+ *
+ * Compared to `paginate` (which yields a flat array of nodes), this preserves
+ * the full response shape — `pageInfo`, `totalCount`, custom fields — and
+ * infers types directly from the operation, no generics required at the call
+ * site.
+ *
+ * ```typescript
+ * for await (const page of paginatePages(sdk.SearchCounterparty, { query: "evolve" })) {
+ *   console.log(page.searchCounterparty.totalCount);
+ *   for (const edge of page.searchCounterparty.edges) {
+ *     console.log(edge.node.counterpartyId);
+ *   }
+ * }
+ * ```
+ */
+export async function* paginatePages<TArgs, TResult>(
+	operation: CursoredOperation<TArgs, TResult>,
+	args: TArgs,
+	options: PaginateOptions = {},
+): AsyncGenerator<TResult, void, void> {
+	const { pageSize, maxPages, connectionPath } = options;
+	let after: string | null | undefined;
+	let pageCount = 0;
+	while (true) {
+		if (maxPages !== undefined && pageCount >= maxPages) return;
+		const result = await operation({
+			...args,
+			...(after ? { after } : {}),
+			...(pageSize ? { first: pageSize } : {}),
+		});
+		const connection = connectionPath
+			? getByPath<Connection<unknown>>(result, connectionPath)
+			: findConnection<unknown>(result);
+		yield result;
+		if (!connection) return;
+		pageCount += 1;
+		if (!connection.pageInfo.hasNextPage) return;
+		const next = connection.pageInfo.endCursor;
+		if (!next || next === after) return;
+		after = next;
+	}
+}

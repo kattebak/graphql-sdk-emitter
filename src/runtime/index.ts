@@ -5,4 +5,5 @@ export {
 	type PageInfo,
 	type PaginateOptions,
 	paginate,
+	paginatePages,
 } from "./paginate.js";

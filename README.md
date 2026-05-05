@@ -136,28 +136,39 @@ class MyAuth implements AuthProvider {
 
 ## Pagination
 
-`paginate` and `collect` walk Relay-style cursored connections.
+Two helpers walk Relay-style cursored connections. Pick by what you need per page.
+
+**`paginatePages`** — yields the full operation result per page. Types infer from the operation; no generics required.
+
+```typescript
+import { paginatePages } from "@kattebak/graphql-sdk-emitter";
+
+for await (const page of paginatePages(sdk.SearchCounterparty, { query: "evolve" }, { pageSize: 50 })) {
+	console.log(page.searchCounterparty.totalCount);
+	for (const edge of page.searchCounterparty.edges) {
+		console.log(edge.node.counterpartyId);
+	}
+}
+```
+
+**`paginate` / `collect`** — yield a flat array of nodes per page, useful when you only need the nodes. Requires explicit `TNode` to type the result.
 
 ```typescript
 import { paginate, collect } from "@kattebak/graphql-sdk-emitter";
 
-for await (const page of paginate(
-	(args) => sdk.SearchCounterparty(args),
+type Counterparty = { counterpartyId: string; name: string };
+
+for await (const nodes of paginate<{ query: string }, unknown, Counterparty>(
+	sdk.SearchCounterparty,
 	{ query: "evolve" },
-	{ pageSize: 50 },
 )) {
-	for (const node of page) console.log(node.id);
+	for (const node of nodes) console.log(node.counterpartyId);
 }
 
-const all = await collect(
-	(args) => sdk.SearchCounterparty(args),
-	{ query: "evolve" },
-);
+const all = await collect<{ query: string }, unknown, Counterparty>(sdk.SearchCounterparty, { query: "evolve" });
 ```
 
-It auto-detects the connection inside the response (the first object with a `pageInfo` field). For deeply nested or ambiguous responses pass `connectionPath: ["data", "wrapper", "results"]`.
-
-Stops when `hasNextPage` is false, when `endCursor` does not advance, or when `maxPages` is reached.
+All three auto-detect the connection inside the response (first object with a `pageInfo` field). For deeply nested or ambiguous responses pass `connectionPath: ["data", "wrapper", "results"]`. They stop when `hasNextPage` is false, when `endCursor` does not advance, or when `maxPages` is reached.
 
 ## Manifest
 
