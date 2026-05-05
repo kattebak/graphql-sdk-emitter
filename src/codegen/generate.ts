@@ -49,9 +49,18 @@ export async function generateSdk(
 
 	const schema = await loadSchema(schemaPath);
 
+	const opsPath = options.operations
+		? isAbsolute(options.operations)
+			? options.operations
+			: resolve(cwd, options.operations)
+		: undefined;
+
 	const generates: Record<string, Types.ConfiguredOutput> = {
 		[resolve(outputDir, TYPES_FILE)]: {
-			plugins: ["typescript"],
+			documents: opsPath ? [opsPath] : undefined,
+			plugins: opsPath
+				? ["typescript", "typescript-operations"]
+				: ["typescript"],
 			config: {
 				avoidOptionals: false,
 				skipTypename: false,
@@ -61,13 +70,14 @@ export async function generateSdk(
 		},
 	};
 
-	if (options.operations) {
-		const opsPath = isAbsolute(options.operations)
-			? options.operations
-			: resolve(cwd, options.operations);
+	if (opsPath) {
 		generates[resolve(outputDir, SDK_FILE)] = {
 			documents: [opsPath],
-			plugins: ["typescript-operations", "typescript-graphql-request"],
+			preset: "import-types",
+			presetConfig: {
+				typesPath: "./types.js",
+			},
+			plugins: ["typescript-graphql-request"],
 			config: {
 				useTypeImports: true,
 				rawRequest: false,
