@@ -19,6 +19,16 @@ export interface GenerateSdkOptions {
 	emitFilterBuilder?: boolean;
 	/** Emit operations manifest JSON. Defaults to true. */
 	emitManifest?: boolean;
+	/**
+	 * Emit an `auth.ts` re-export module that pulls auth providers from the
+	 * `/auth` subpath of `@kattebak/graphql-sdk-emitter`. Defaults to true.
+	 *
+	 * The subpath import is the entire point: re-exporting from the bare `.`
+	 * entry pulls in `@graphql-codegen/cli` etc. as runtime deps for any
+	 * consumer that imports from the generated SDK — tens of MB of unrelated
+	 * tooling and a tree-shaking minefield for browser/Lambda bundlers (#3).
+	 */
+	emitAuth?: boolean;
 }
 
 export interface GenerateSdkResult {
@@ -31,6 +41,33 @@ const SDK_FILE = "sdk.ts";
 const MANIFEST_FILE = "manifest.json";
 const FILTERS_FILE = "filters.ts";
 const INDEX_FILE = "index.ts";
+const AUTH_FILE = "auth.ts";
+
+// Issue #3: re-export from the `/auth` subpath, NOT the bare `.` entry. The
+// bare entry hangs `@graphql-codegen/cli` and friends off any consumer that
+// imports from the generated SDK; the subpath is auth-only.
+const AUTH_REEXPORT_SOURCE = "@kattebak/graphql-sdk-emitter/auth";
+
+function buildAuthFile(): string {
+	return [
+		"// AUTO-GENERATED. Do not edit by hand.",
+		"",
+		"export {",
+		"\tApiKeyAuth,",
+		"\ttype ApiKeyAuthOptions,",
+		"\tCognitoBearerAuth,",
+		"\ttype CognitoBearerAuthOptions,",
+		"\tSigV4Auth,",
+		"\ttype SigV4AuthOptions,",
+		"\ttype CredentialsProvider,",
+		"\ttype SigV4Credentials,",
+		"\ttype TokenProvider,",
+		"\ttype AuthProvider,",
+		"\ttype FetchFn,",
+		`} from "${AUTH_REEXPORT_SOURCE}";`,
+		"",
+	].join("\n");
+}
 
 export async function generateSdk(
 	options: GenerateSdkOptions,
@@ -44,6 +81,7 @@ export async function generateSdk(
 		: resolve(cwd, options.output);
 	const emitFilters = options.emitFilterBuilder !== false;
 	const emitManifestFile = options.emitManifest !== false;
+	const emitAuthFile = options.emitAuth !== false;
 
 	await mkdir(outputDir, { recursive: true });
 
@@ -116,6 +154,16 @@ export async function generateSdk(
 		written.push(manifestPath);
 	}
 
+	if (emitAuthFile) {
+		const authPath = resolve(outputDir, AUTH_FILE);
+		await writeFile(authPath, buildAuthFile(), "utf8");
+		written.push(authPath);
+	}
+
+	// auth.ts is intentionally NOT re-exported from index.ts. The whole point
+	// of issue #3 is keeping the auth providers off the default import path
+	// so browser / Lambda bundlers don't drag in `aws4fetch` or any of the
+	// codegen tooling. Consumers explicitly import `from "./auth"`.
 	const indexPath = resolve(outputDir, INDEX_FILE);
 	await writeFile(indexPath, buildIndex(options), "utf8");
 	written.push(indexPath);
