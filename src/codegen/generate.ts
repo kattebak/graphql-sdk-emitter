@@ -1,10 +1,74 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { generate } from "@graphql-codegen/cli";
 import type { Types } from "@graphql-codegen/plugin-helpers";
-import { buildSchema, type GraphQLSchema } from "graphql";
+import { buildSchema } from "graphql";
 import { emitFilterBuilders } from "./filter-builder.js";
 import { buildManifest } from "./manifest.js";
+
+/**
+ * AppSync auth directive declarations the emitter pre-registers so consumer
+ * SDL can carry them without `buildSchema` rejecting "Unknown directive"
+ * (issue #2). The directives have no client-side meaning — the SDK just
+ * needs to parse past them. The companion typespec emitter (#121) emits
+ * these on object types and Query fields; bare `buildSchema` would reject
+ * the same SDL that AppSync deploys cleanly.
+ *
+ * Locations are kept permissive so any sane placement parses; we don't
+ * enforce AppSync's exact placement rules — that's AppSync's job at deploy
+ * time. Argument shapes mirror the AppSync docs.
+ */
+const AWS_AUTH_DIRECTIVE_DECLARATIONS: ReadonlyArray<{
+	name: string;
+	declaration: string;
+}> = [
+	{
+		name: "aws_cognito_user_pools",
+		declaration:
+			"directive @aws_cognito_user_pools(cognito_groups: [String]) on OBJECT | FIELD_DEFINITION",
+	},
+	{
+		name: "aws_iam",
+		declaration: "directive @aws_iam on OBJECT | FIELD_DEFINITION",
+	},
+	{
+		name: "aws_api_key",
+		declaration: "directive @aws_api_key on OBJECT | FIELD_DEFINITION",
+	},
+	{
+		name: "aws_oidc",
+		declaration: "directive @aws_oidc on OBJECT | FIELD_DEFINITION",
+	},
+	{
+		name: "aws_lambda",
+		declaration: "directive @aws_lambda on OBJECT | FIELD_DEFINITION",
+	},
+	{
+		name: "aws_auth",
+		declaration:
+			"directive @aws_auth(cognito_groups: [String]) on FIELD_DEFINITION",
+	},
+	{
+		name: "aws_subscribe",
+		declaration:
+			"directive @aws_subscribe(mutations: [String]) on FIELD_DEFINITION",
+	},
+];
+
+/**
+ * Prepend any AppSync directive declarations that aren't already present in
+ * the user's SDL. Skip-if-present keeps schemas that already declare them
+ * (e.g. authoring tools that emit their own header) from tripping
+ * "Directive @X already defined".
+ */
+export function withAwsAuthDirectives(sdl: string): string {
+	const missing = AWS_AUTH_DIRECTIVE_DECLARATIONS.filter(
+		(d) => !sdl.includes(`directive @${d.name}`),
+	);
+	if (missing.length === 0) return sdl;
+	const header = `${missing.map((d) => d.declaration).join("\n")}\n\n`;
+	return `${header}${sdl}`;
+}
 
 export interface GenerateSdkOptions {
 	/** Path or glob to the GraphQL schema SDL. */
@@ -47,7 +111,22 @@ export async function generateSdk(
 
 	await mkdir(outputDir, { recursive: true });
 
-	const schema = await loadSchema(schemaPath);
+	// Augment the SDL with AppSync directive declarations once and reuse for
+	// both our own buildSchema call and the graphql-codegen pipeline. Both
+	// paths reach `buildSchema` under the hood, so both must see the
+	// declarations or `buildSchema` rejects "Unknown directive @aws_*"
+	// (issue #2). Materialize as a sibling file inside outputDir so codegen
+	// can `schema:` it; clean up after generate() returns.
+	const originalSdl = await readFile(schemaPath, "utf8");
+	const augmentedSdl = withAwsAuthDirectives(originalSdl);
+	const schema = buildSchema(augmentedSdl);
+	const sdlForCodegenPath =
+		augmentedSdl === originalSdl
+			? schemaPath
+			: resolve(outputDir, ".__schema-with-aws-directives.graphql");
+	if (sdlForCodegenPath !== schemaPath) {
+		await writeFile(sdlForCodegenPath, augmentedSdl, "utf8");
+	}
 
 	const opsPath = options.operations
 		? isAbsolute(options.operations)
@@ -86,15 +165,21 @@ export async function generateSdk(
 		};
 	}
 
-	await generate(
-		{
-			cwd,
-			schema: schemaPath,
-			generates,
-			silent: true,
-		},
-		true,
-	);
+	try {
+		await generate(
+			{
+				cwd,
+				schema: sdlForCodegenPath,
+				generates,
+				silent: true,
+			},
+			true,
+		);
+	} finally {
+		if (sdlForCodegenPath !== schemaPath) {
+			await rm(sdlForCodegenPath, { force: true });
+		}
+	}
 
 	const written: string[] = [resolve(outputDir, TYPES_FILE)];
 	if (options.operations) written.push(resolve(outputDir, SDK_FILE));
@@ -121,11 +206,6 @@ export async function generateSdk(
 	written.push(indexPath);
 
 	return { outputDir, files: written };
-}
-
-async function loadSchema(schemaPath: string): Promise<GraphQLSchema> {
-	const sdl = await readFile(schemaPath, "utf8");
-	return buildSchema(sdl);
 }
 
 function buildIndex(options: GenerateSdkOptions): string {
